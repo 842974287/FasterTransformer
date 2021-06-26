@@ -117,7 +117,11 @@ Tensor FasterTransformerEncoder::forward(Tensor input, Tensor attr_mask, Tensor 
     TORCH_CHECK(sequence_id_offset.numel()!=0, "sequence_id_offset should not be empty tensor");
   }
   auto output = torch::empty_like(input);
-  ftencoder->forward(batch_size, seq_len, input, attr_mask, output, trt_seqlen_offset, sequence_id_offset, _remove_padding);
+  {
+    // Serialize access to ftencoder, as the class can be called from multi host threads without synchronization.
+    std::lock_guard g(mu_);
+    ftencoder->forward(batch_size, seq_len, input, attr_mask, output, trt_seqlen_offset, sequence_id_offset, _remove_padding);
+  }
   return output;
 }
 

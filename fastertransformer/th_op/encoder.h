@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
+#include <mutex>
 #include <vector>
 #include <iostream>
 #include <cuda_fp16.h>
-#include <nvToolsExt.h> 
+#include <nvToolsExt.h>
 
 #include <torch/script.h>
 #include <torch/custom_class.h>
@@ -168,8 +169,8 @@ std::vector<Tensor> build_mask_remove_padding_impl(Tensor input, Tensor sequence
       torch::empty({valid_word_num}, torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
   int* sequence_id_offset_ptr = get_ptr<int>(sequence_id_offset);
 
-  remove_sequence_length_padding_kernelLauncher(input_ptr, output_ptr, 
-                                                tmp_sequence_id_offset, sequence_id_offset_ptr, 
+  remove_sequence_length_padding_kernelLauncher(input_ptr, output_ptr,
+                                                tmp_sequence_id_offset, sequence_id_offset_ptr,
                                                 valid_word_num, hidden_dim, stream);
 
   return std::vector<Tensor>{output, sequence_id_offset};
@@ -231,7 +232,7 @@ public:
     bool use_trt_kernel);
 
   ~FasterTransformerEncoder();
-  
+
   Tensor forward(Tensor input, Tensor attr_mask, Tensor trt_seqlen_offset, Tensor sequence_id_offset);
 
   std::vector<Tensor> get_pickle_info() const;
@@ -243,6 +244,9 @@ private:
   Tensor head_info;
   std::vector<Tensor> weights;
   bool _allow_gemm_test;
+
+  // Guard access to ftencoder
+  std::mutex mu_
 };
 
 std::vector<Tensor> build_mask_remove_padding(Tensor input, Tensor sequence_lengths);

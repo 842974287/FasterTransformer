@@ -104,6 +104,7 @@ class BertEncoderTransformer
   std::map<std::string, int> parameterMap_;
 
   DataType_ *buf_ = NULL;
+  DataType_ *ln_out_buf_;
   DataType_ *attr_out_buf_;
   DataType_ *attr_matmul_buf_;
   DataType_ *inter_matmul_buf_;
@@ -164,7 +165,7 @@ public:
                          m*n*sizeof(DataType_);
     }
     else{
-      normal_buf_size = sizeof(DataType_) * (m*n) * 7 + ((sizeof(half) == sizeof(DataType_)) ? CUBLAS_WORKSPACE_SIZE : 0);
+      normal_buf_size = sizeof(DataType_) * (m*n) * 8 + ((sizeof(half) == sizeof(DataType_)) ? CUBLAS_WORKSPACE_SIZE : 0);
     }
     return normal_buf_size;  
   }
@@ -396,7 +397,8 @@ public:
           }
           attr_matmul_buf_ = attr_out_buf_ + buf_size;
           inter_matmul_buf_ = attr_matmul_buf_ + buf_size;
-          attr_matmul_unnormed_buf_ = inter_matmul_buf_ + 4 * buf_size;
+          ln_out_buf_ = inter_matmul_buf_ + 4 * buf_size;
+          attr_matmul_unnormed_buf_ = inter_matmul_buf_ + buf_size;
         }
       }
 
@@ -581,28 +583,42 @@ public:
     attention_->initialize(multi_head_init_param);
   }
 
+  void forward() {
+    forward(false);
+  }
+
   /**
    * do forward 
    **/
-  void forward()
+  void forward(bool normalize_before)
   {
 #ifndef NDEBUG
     PRINT_FUNC_NAME_();
 #endif
     try
     {
-      attention_->forward();
-
-#ifndef NDEBUG
-      cudaDeviceSynchronize();
-      check_cuda_error(cudaGetLastError());
-#endif
-
       DataType_ alpha = (DataType_)1.0f;
       DataType_ beta = (DataType_)0.0f;
       const int m = param_.sequence_id_offset == nullptr ? batch_size_ * from_seq_len_ : param_.valid_word_num;
       int k = head_num_ * size_per_head_;
       int n = k;
+
+      if (normalize_before) {
+        layer_norm<DataType_>(param_.from_tensor,
+                              param_.self_layernorm.gamma,
+                              param_.self_layernorm.beta,
+                              ln_out_buf_,
+                              m, n, param_.stream);
+
+        attention_->forward(ln_out_buf_, ln_out_buf_);
+      } else {
+        attention_->forward();
+      }
+
+#ifndef NDEBUG
+      cudaDeviceSynchronize();
+      check_cuda_error(cudaGetLastError());
+#endif
 
       if (int8_mode_ != 0){
         if (int8_mode_ == 1)
@@ -716,13 +732,22 @@ public:
                                     &beta, (DataType_ *)attr_matmul_buf_, CType_, n,
                                     param_.stream, cublasAlgoMap_, sm_, cublas_workspace_); 
 
-        add_bias_input_layernorm_kernelLauncher<DataType_>(attr_matmul_buf_,
-                                                           param_.from_tensor, 
-                                                           param_.self_attention.attention_output_weight.bias,
-                                                           param_.self_layernorm.gamma,
-                                                           param_.self_layernorm.beta, 
-                                                           m, n, param_.stream);
-
+        if (normalize_before) {
+          add_bias_input_layernorm_2_kernelLauncher<DataType_>(
+            param_.from_tensor,
+            param_.ffn_layernorm.gamma,
+            param_.ffn_layernorm.beta,
+            param_.self_attention.attention_output_weight.bias,
+            attr_matmul_buf_, ln_out_buf_,
+            m, n, param_.stream);
+        } else {
+          add_bias_input_layernorm_kernelLauncher<DataType_>(attr_matmul_buf_,
+                                                            param_.from_tensor,
+                                                            param_.self_attention.attention_output_weight.bias,
+                                                            param_.self_layernorm.gamma,
+                                                            param_.self_layernorm.beta,
+                                                            m, n, param_.stream);
+        }
 #ifndef NDEBUG
         cudaDeviceSynchronize();
         check_cuda_error(cudaGetLastError());
@@ -733,10 +758,10 @@ public:
         cublasMM_cublasLtMM_wrapper(param_.cublaslt_handle, param_.cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, 
                                     n, m, k, &alpha, 
                                     param_.ffn.intermediate_weight.kernel, AType_, n,
-                                    attr_matmul_buf_, BType_, k, 
-                                    &beta, (DataType_ *)inter_matmul_buf_, CType_, n,
-                                    param_.stream, cublasAlgoMap_, sm_, cublas_workspace_); 
-                            
+                                    attr_matmul_buf_, BType_, k,
+                                    &beta, normalize_before ? ln_out_buf_ : inter_matmul_buf_, CType_, n,
+                                    param_.stream, cublasAlgoMap_, sm_, cublas_workspace_);
+
         add_bias_act_kernelLauncher<DataType_>(inter_matmul_buf_, param_.ffn.intermediate_weight.bias, m, n, ActivationType::GELU, param_.stream);
       
 #ifndef NDEBUG
@@ -752,22 +777,29 @@ public:
                                     param_.ffn.output_weight.kernel, AType_, n,
                                     inter_matmul_buf_, BType_, k, 
                                     &beta, (DataType_ *)(param_.transformer_out), CType_, n,
+<<<<<<< HEAD
                                     param_.stream, cublasAlgoMap_, sm_, cublas_workspace_); 
                                     
          add_bias_input_layernorm_kernelLauncher<DataType_>(param_.transformer_out, 
                                                             attr_matmul_buf_,
                                                             param_.ffn.output_weight.bias,
                                                             param_.ffn_layernorm.gamma,
-                                                            param_.ffn_layernorm.beta,
-                                                            m, n, param_.stream);
-                                                         
+        } else {
+          add_bias_input_layernorm_kernelLauncher<DataType_>(param_.transformer_out,
+                                                              attr_matmul_buf_,
+                                                              param_.ffn.output_weight.bias,
+                                                              param_.ffn_layernorm.gamma,
+                                                              param_.ffn_layernorm.beta,
+                                                              m, n, param_.stream);
+        }
+
+>>>>>>> b69e8fa... Squashed commit of the following:
 #ifndef NDEBUG
         cudaDeviceSynchronize();
         check_cuda_error(cudaGetLastError());
 #endif                                                         
       }
     }
-    catch (std::runtime_error &error)
     {
       throw error;
     }
@@ -790,4 +822,3 @@ public:
 };
 
 } // namespace fastertransformer
-

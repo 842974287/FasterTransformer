@@ -50,8 +50,9 @@ template <typename T>
 class FTEncoder : public IFTEncoder {
 public:
   FTEncoder(int head_num, int head_size,
-            int int8_mode, int layer_num, int layer_idx, bool allow_gemm_test, bool use_trt_kernel,
-            const std::vector<Tensor>& w) : _head_num(head_num), _head_size(head_size), _use_trt_kernel(use_trt_kernel), _weights(w) {
+            int int8_mode, int layer_num, int layer_idx, bool allow_gemm_test, bool use_trt_kernel, bool normalize_before,
+            const std::vector<Tensor>& w) : _head_num(head_num), _head_size(head_size), _use_trt_kernel(use_trt_kernel),
+            _normalize_before(normalize_before), _weights(w) {
     int hidden_dim = _head_num * _head_size;
     check_cuda_error(cublasCreate(&_cublasHandle));
     check_cuda_error(cublasLtCreate(&_cublasltHandle));
@@ -122,7 +123,7 @@ public:
     fastertransformer::Allocator<AllocatorType::TH>* allocator = new fastertransformer::Allocator<AllocatorType::TH>();
     encoder_tmp->allocateBuffer(allocator, batch_size, seq_len, seq_len, _head_num, _head_size, _use_trt_kernel);
     encoder_tmp->initialize(encoder_param);
-    encoder_tmp->forward();
+    encoder_tmp->forward(_normalize_before);
     encoder_tmp->freeBuffer();
     delete encoder_tmp;
     delete allocator;
@@ -138,6 +139,7 @@ private:
   BertInitParam<T> encoder_param;
   BertEncoderTransformer<EncoderTraits_>* encoder = nullptr;
   bool _use_trt_kernel;
+  bool _normalize_before;
 };
 
 template <typename T>
@@ -228,7 +230,8 @@ public:
     int64_t layer_num,
     int64_t layer_idx,
     bool allow_gemm_test,
-    bool use_trt_kernel);
+    bool use_trt_kernel,
+    bool normalize_before);
 
   ~FasterTransformerEncoder();
   

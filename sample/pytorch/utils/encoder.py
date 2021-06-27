@@ -164,6 +164,7 @@ class CustomEncoder(torch.nn.Module):
         self.int8_mode = int8_mode
         self.encoders = []
         use_trt_kernel = True
+        normalize_before = False
         torch.classes.load_library(path)
         for i in range(layer_num):
             assert len(weights.listed_weights(i)) == 17
@@ -171,13 +172,13 @@ class CustomEncoder(torch.nn.Module):
                 self.encoders.append(
                     torch.classes.FasterTransformer.Encoder(
                         *weights.listed_weights(i),
-                        head_num, head_size, remove_padding, int8_mode, layer_num, i, allow_gemm_test, use_trt_kernel))
+                        head_num, head_size, remove_padding, int8_mode, layer_num, i, allow_gemm_test, use_trt_kernel, normalize_before))
             except:
                 # legacy ths for 20.03 image
                 self.encoders.append(
                     torch.classes.FasterTransformerEncoder(
                         *weights.listed_weights(i),
-                        head_num, head_size, remove_padding, int8_mode, layer_num, i, allow_gemm_test, use_trt_kernel))
+                        head_num, head_size, remove_padding, int8_mode, layer_num, i, allow_gemm_test, use_trt_kernel, normalize_before))
         self.build_mask_remove_padding = torch.ops.fastertransformer.build_mask_remove_padding
         self.rebuild_padding = torch.ops.fastertransformer.rebuild_padding
 

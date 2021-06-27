@@ -25,7 +25,7 @@
 
 using torch::Tensor;
 
-static auto fasterTransformerEncoderTHS = 
+static auto fasterTransformerEncoderTHS =
 #ifdef LEGACY_THS
   torch::jit::class_<torch_ext::FasterTransformerEncoder>("FasterTransformerEncoder")
 #else
@@ -34,7 +34,7 @@ static auto fasterTransformerEncoderTHS =
   .def(torch::jit::init<Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
                         Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
                         Tensor, Tensor, Tensor, Tensor, Tensor,
-                        int64_t, int64_t, bool, int64_t, int64_t, int64_t, bool, bool>())
+                        int64_t, int64_t, bool, int64_t, int64_t, int64_t, bool, bool, int64_t>())
   .def("forward", &torch_ext::FasterTransformerEncoder::forward)
   .def_pickle(
     [](const c10::intrusive_ptr<torch_ext::FasterTransformerEncoder>& self) -> std::vector<Tensor> {
@@ -49,15 +49,16 @@ static auto fasterTransformerEncoderTHS =
       int64_t layer_idx = state[17][5].item().to<int>();
       bool allow_gemm_test = (bool)(state[17][6].item().to<int>());
       bool use_trt_kernel = (bool)(state[17][7].item().to<int>());
+      int64_t mlp_hidden_dim = state[17].size(0) >= 9 ? state[17][8].item().to<int>() : 4 * head_num * head_size;
       return c10::make_intrusive<torch_ext::FasterTransformerEncoder>(
         state[0], state[1], state[2], state[3], state[4], state[5],
         state[6], state[7], state[8], state[9], state[10], state[11],
         state[12], state[13], state[14], state[15], state[16],
-        head_num, head_size, remove_padding, int8_mode, layer_num, layer_idx, allow_gemm_test, use_trt_kernel);
+        head_num, head_size, remove_padding, int8_mode, layer_num, layer_idx, allow_gemm_test, use_trt_kernel, mlp_hidden_dim);
     }
   );
 
-static auto fasterTransformerDecoderTHS = 
+static auto fasterTransformerDecoderTHS =
 #ifdef LEGACY_THS
   torch::jit::class_<torch_ext::FasterTransformerDecoder>("FasterTransformerDecoder")
 #else
@@ -84,7 +85,7 @@ static auto fasterTransformerDecoderTHS =
     }
   );
 
-static auto fasterTransformerDecodingTHS = 
+static auto fasterTransformerDecodingTHS =
 #ifdef LEGACY_THS
   torch::jit::class_<torch_ext::FasterTransformerDecoding>("FasterTransformerDecoding")
 #else
@@ -118,14 +119,14 @@ static auto fasterTransformerDecodingTHS =
     }
   );
 
-static auto fasterTransformerGPTTHS = 
+static auto fasterTransformerGPTTHS =
 torch::jit::class_<torch_ext::FasterTransformerGPT>("FasterTransformer", "GPT")
   .def(torch::jit::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                         double, double, int64_t, int64_t, int64_t, int64_t, bool, int64_t,
                         Tensor, Tensor,
-                        std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, 
                         std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>,
-                        std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, 
+                        std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>,
+                        std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>, std::vector<Tensor>,
                         Tensor, Tensor>())
   .def("forward", &torch_ext::FasterTransformerGPT::forward);
 

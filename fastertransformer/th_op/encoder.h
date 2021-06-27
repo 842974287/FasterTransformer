@@ -17,7 +17,7 @@
 #include <vector>
 #include <iostream>
 #include <cuda_fp16.h>
-#include <nvToolsExt.h> 
+#include <nvToolsExt.h>
 
 #include <torch/script.h>
 #include <torch/custom_class.h>
@@ -138,6 +138,7 @@ private:
   BertInitParam<T> encoder_param;
   BertEncoderTransformer<EncoderTraits_>* encoder = nullptr;
   bool _use_trt_kernel;
+  const int _mlp_hidden_dim;
 };
 
 template <typename T>
@@ -168,8 +169,8 @@ std::vector<Tensor> build_mask_remove_padding_impl(Tensor input, Tensor sequence
       torch::empty({valid_word_num}, torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
   int* sequence_id_offset_ptr = get_ptr<int>(sequence_id_offset);
 
-  remove_sequence_length_padding_kernelLauncher(input_ptr, output_ptr, 
-                                                tmp_sequence_id_offset, sequence_id_offset_ptr, 
+  remove_sequence_length_padding_kernelLauncher(input_ptr, output_ptr,
+                                                tmp_sequence_id_offset, sequence_id_offset_ptr,
                                                 valid_word_num, hidden_dim, stream);
 
   return std::vector<Tensor>{output, sequence_id_offset};
@@ -228,10 +229,11 @@ public:
     int64_t layer_num,
     int64_t layer_idx,
     bool allow_gemm_test,
-    bool use_trt_kernel);
+    bool use_trt_kernel,
+    int64_t _mlp_hidden_dim);
 
   ~FasterTransformerEncoder();
-  
+
   Tensor forward(Tensor input, Tensor attr_mask, Tensor trt_seqlen_offset, Tensor sequence_id_offset);
 
   std::vector<Tensor> get_pickle_info() const;
